@@ -24,6 +24,7 @@ import org.xmlpull.v1.XmlPullParserException;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.Resources;
 import android.content.res.XmlResourceParser;
 import android.preference.PreferenceManager;
 import android.provider.Telephony;
@@ -113,6 +114,8 @@ public class MmsConfig {
     // activity.
     private static boolean mEnableGroupMms = true;
 
+    private static float sMmsCornerRadius = 5;
+
     public static void init(Context context) {
         if (LOCAL_LOGV) {
             Log.v(TAG, "MmsConfig.init()");
@@ -121,7 +124,9 @@ public class MmsConfig {
         Log.v(TAG, "mnc/mcc: " +
                 android.os.SystemProperties.get(TelephonyProperties.PROPERTY_ICC_OPERATOR_NUMERIC));
         loadDeviceUaSettings(context);
-        loadMmsSettings(context);
+
+        final Resources res = context.getResources();
+        sMmsCornerRadius = res.getDimension(R.dimen.mms_image_corner_radius);
     }
 
     private static void loadDeviceUaSettings(Context context) {
@@ -273,6 +278,10 @@ public class MmsConfig {
 
     public static int getMaxSizeScaleForPendingMmsAllowed() {
         return mMaxSizeScaleForPendingMmsAllowed;
+    }
+
+    public static float getMmsCornerRadius() {
+        return sMmsCornerRadius;
     }
 
     public static boolean isAliasEnabled() {

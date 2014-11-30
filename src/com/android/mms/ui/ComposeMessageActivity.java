@@ -40,8 +40,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
+import android.animation.AnimatorSet;
+import android.animation.ArgbEvaluator;
+import android.animation.ObjectAnimator;
 import android.app.ActionBar;
 import android.app.Activity;
+import android.app.ActivityManager;
 import android.app.AlertDialog;
 import android.app.ProgressDialog;
 import android.content.ActivityNotFoundException;
@@ -58,10 +62,12 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.Configuration;
 import android.content.res.Resources;
+import android.content.res.TypedArray;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteException;
 import android.database.sqlite.SqliteWrapper;
 import android.drm.DrmStore;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.media.RingtoneManager;
 import android.net.Uri;
@@ -123,8 +129,11 @@ import android.widget.ListView;
 import android.widget.SimpleAdapter;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.Toolbar;
 import android.widget.Button;
 
+import com.android.contacts.common.util.MaterialColorMapUtils;
+import com.android.contacts.common.util.MaterialColorMapUtils.MaterialPalette;
 import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.telephony.TelephonyProperties;
 import com.android.internal.telephony.util.BlacklistUtils;
@@ -284,6 +293,7 @@ public class ComposeMessageActivity extends Activity
     private boolean mSendDiscreetMode;
     private boolean mForwardMessageMode;
 
+    private Toolbar mToolBar;
     private View mTopPanel;                 // View containing the recipient and subject editors
     private View mBottomPanel;              // View containing the text editor, send button, ec.
     private EditText mTextEditor;           // Text editor to type your message into
@@ -299,7 +309,8 @@ public class ComposeMessageActivity extends Activity
     public MessageListAdapter mMsgListAdapter;  // and its corresponding ListAdapter
 
     private RecipientsEditor mRecipientsEditor;  // UI control for editing recipients
-    private ImageButton mRecipientsPicker;       // UI control for recipients picker
+
+    private View mRecipientsPicker;              // UI control for recipients picker
 
     // For HW keyboard, 'mIsKeyboardOpen' indicates if the HW keyboard is open.
     // For SW keyboard, 'mIsKeyboardOpen' should always be true.
@@ -375,6 +386,11 @@ public class ComposeMessageActivity extends Activity
     public final static String THREAD_ID = "thread_id";
     private final static String RECIPIENTS = "recipients";
     private final static String MSG_SUBJECT_SIZE = "subject_size";
+
+    private int mAccentColor = 0;
+    private int mStatusBarColor = 0;
+    private boolean mAccentColorLoaded = false;
+    private boolean mLoadingAccentColor = false;
 
     @SuppressWarnings("unused")
     public static void log(String logMsg) {
@@ -1978,9 +1994,17 @@ public class ComposeMessageActivity extends Activity
                 title = list.get(0).getName();      // get name returns the number if there's no
                                                     // name available.
                 String number = list.get(0).getNumber();
-                if (!title.equals(number)) {
-                    subTitle = PhoneNumberUtils.formatNumber(number, number,
-                            MmsApp.getApplication().getCurrentCountryIso());
+
+                String formattedNumber = PhoneNumberUtils.formatNumber(number, number,
+                        MmsApp.getApplication().getCurrentCountryIso());
+
+                if (formattedNumber.charAt(0) != '\u202D') {
+                    formattedNumber = '\u202D' + formattedNumber + '\u202C';
+                }
+                if (title.equals(number)) {
+                    title = formattedNumber;
+                } else {
+                    subTitle = formattedNumber;
                 }
                 break;
             }
@@ -1993,9 +2017,100 @@ public class ComposeMessageActivity extends Activity
         }
         mDebugRecipients = list.serialize();
 
-        ActionBar actionBar = getActionBar();
-        actionBar.setTitle(title);
-        actionBar.setSubtitle(subTitle);
+        if (cnt > 0 && !mAccentColorLoaded && !mLoadingAccentColor) {
+            final Contact contact = list.get(0);
+            // first see whether there's a cached color already
+            int color = contact.getAccentColor(this, false);
+            if (color != 0) {
+                mAccentColorLoaded = true;
+                updateColorPalette(color);
+            } else {
+                mLoadingAccentColor = true;
+                new AsyncTask<Void, Void, Integer>() {
+                    @Override
+                    protected Integer doInBackground(Void... params) {
+                        return contact.getAccentColor(ComposeMessageActivity.this, true);
+                    }
+
+                    @Override
+                    protected void onPostExecute(Integer color) {
+                        if (mLoadingAccentColor) {
+                            mLoadingAccentColor = false;
+                            mAccentColorLoaded = true;
+                            updateColorPalette(color);
+                        }
+                    }
+                }.execute();
+            }
+        } else if (cnt == 0) {
+            mLoadingAccentColor = false;
+            if (mAccentColorLoaded) {
+                mAccentColorLoaded = false;
+                updateAccentColorFromTheme(false);
+            }
+        }
+
+        mToolBar.setTitle(title);
+        mToolBar.setSubtitle(subTitle);
+    }
+
+    private void updateColorPalette(int color) {
+        MaterialPalette palette = determinePalette(color);
+        updateThemeColors(palette.mPrimaryColor, palette.mSecondaryColor);
+
+        mAccentColor = palette.mPrimaryColor;
+        mStatusBarColor = palette.mSecondaryColor;
+    }
+
+    private MaterialPalette determinePalette(int color) {
+        final Resources res = getResources();
+        if (color != 0) {
+            MaterialColorMapUtils mcmu = new MaterialColorMapUtils(res);
+            return mcmu.calculatePrimaryAndSecondaryColor(color);
+        }
+        return MaterialColorMapUtils.getDefaultPrimaryAndSecondaryColors(res);
+    }
+
+    private void updateAccentColorFromTheme(boolean loadOnly) {
+        Resources.Theme theme = getTheme();
+        if (theme == null) {
+            return;
+        }
+
+        TypedArray a = theme.obtainStyledAttributes(android.R.styleable.Theme);
+        int colorPrimary = a.getColor(android.R.styleable.Theme_colorPrimary, 0);
+        int colorPrimaryDark = a.getColor(android.R.styleable.Theme_colorPrimaryDark, 0);
+        a.recycle();
+        if (colorPrimary != 0 && colorPrimaryDark != 0) {
+            if (!loadOnly) {
+                updateThemeColors(colorPrimary, colorPrimaryDark);
+            }
+            mAccentColor = colorPrimary;
+            mStatusBarColor = colorPrimaryDark;
+        }
+    }
+
+    private void updateThemeColors(int accentColor, int statusBarColor) {
+        final ColorDrawable background = new ColorDrawable();
+        final ObjectAnimator backgroundAnimation = ObjectAnimator.ofInt(background,
+                "color", mAccentColor, accentColor);
+        final ObjectAnimator statusBarAnimation = ObjectAnimator.ofInt(getWindow(),
+                "statusBarColor", mStatusBarColor, statusBarColor);
+
+        backgroundAnimation.setEvaluator(new ArgbEvaluator());
+        statusBarAnimation.setEvaluator(new ArgbEvaluator());
+        findViewById(R.id.header).setBackground(background);
+
+        final AnimatorSet animation = new AnimatorSet();
+        animation.playTogether(backgroundAnimation, statusBarAnimation);
+        animation.setDuration(isResumed() ? 200 : 0);
+        animation.start();
+
+        if (mMsgListAdapter != null) {
+            mMsgListAdapter.setAccentColor(accentColor);
+        }
+
+        setTaskDescription(new ActivityManager.TaskDescription(null, null, accentColor));
     }
 
     // Get the recipients editor ready to be displayed onscreen.
@@ -2011,11 +2126,11 @@ public class ComposeMessageActivity extends Activity
         if (stub != null) {
             View stubView = stub.inflate();
             mRecipientsEditor = (RecipientsEditor) stubView.findViewById(R.id.recipients_editor);
-            mRecipientsPicker = (ImageButton) stubView.findViewById(R.id.recipients_picker);
+            mRecipientsPicker = stubView.findViewById(R.id.recipients_picker);
         } else {
             mRecipientsEditor = (RecipientsEditor)findViewById(R.id.recipients_editor);
             mRecipientsEditor.setVisibility(View.VISIBLE);
-            mRecipientsPicker = (ImageButton)findViewById(R.id.recipients_picker);
+            mRecipientsPicker = findViewById(R.id.recipients_picker);
         }
         mRecipientsPicker.setOnClickListener(this);
 
@@ -2106,6 +2221,7 @@ public class ComposeMessageActivity extends Activity
         mContentResolver = getContentResolver();
         mBackgroundQueryHandler = new BackgroundQueryHandler(mContentResolver);
 
+        updateAccentColorFromTheme(true);
         initialize(savedInstanceState, 0);
 
         if (TRACE) {
@@ -3732,7 +3848,7 @@ public class ComposeMessageActivity extends Activity
     public void onClick(View v) {
         if ((v == mSendButtonSms || v == mSendButtonMms) && isPreparedForSending()) {
             confirmSendMessageIfNeeded();
-        } else if ((v == mRecipientsPicker)) {
+        } else if (v == mRecipientsPicker) {
             launchMultiplePhonePicker();
         }
     }
@@ -3866,6 +3982,9 @@ public class ComposeMessageActivity extends Activity
      * Initialize all UI elements from resources.
      */
     private void initResourceRefs() {
+        mToolBar = (Toolbar) findViewById(R.id.toolbar);
+        setActionBar(mToolBar);
+
         mMsgListView = (MessageListView) findViewById(R.id.history);
         mMsgListView.setDivider(null);      // no divider so we look like IM conversation.
 

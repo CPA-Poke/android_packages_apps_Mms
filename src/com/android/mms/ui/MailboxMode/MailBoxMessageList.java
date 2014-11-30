@@ -68,6 +68,7 @@ import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Toolbar;
 
 import com.android.mms.data.Contact;
 import com.android.mms.LogTag;
@@ -185,9 +186,15 @@ public class MailBoxMessageList extends ListActivity implements
         mSpinners = (View) findViewById(R.id.spinners);
         initSpinner();
 
+        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
+        setActionBar(toolbar);
+
         mListView = getListView();
         getListView().setItemsCanFocus(true);
         mModeCallback = new ModeCallback();
+
+        TextView emptyView = (TextView) findViewById(R.id.emptyview);
+        mListView.setEmptyView(emptyView);
 
         ActionBar actionBar = getActionBar();
         actionBar.setDisplayHomeAsUpEnabled(false);
@@ -605,15 +612,12 @@ public class MailBoxMessageList extends ListActivity implements
                         mListAdapter = new MailBoxMessageListAdapter(MailBoxMessageList.this,
                                 MailBoxMessageList.this, cursor);
                         invalidateOptionsMenu();
-                        MailBoxMessageList.this.setListAdapter(mListAdapter);
+                        setListAdapter(mListAdapter);
                         TextView emptyView = (TextView) findViewById(R.id.emptyview);
                         mListView.setEmptyView(emptyView);
                         if (isSearchMode()) {
-                            int count = cursor.getCount();
-                            setMessageTitle(count);
-                            if (count == 0) {
-                                emptyView.setText(getString(R.string.search_empty));
-                             }
+                            TextView emptyView = (TextView) mListView.getEmptyView();
+                            emptyView.setText(R.string.search_empty);
                         }
                     } else {
                         mListAdapter.changeCursor(mCursor);
@@ -622,20 +626,12 @@ public class MailBoxMessageList extends ListActivity implements
                                 resetSearchView();
                             }
                         }
-                        if (needShowCountNum(cursor)) {
-                            mCountTextView.setVisibility(View.VISIBLE);
-                            if (mQueryBoxType == TYPE_INBOX) {
-                                mCountTextView.setText(COUNT_TEXT_DECOLLATOR_1
-                                        + getUnReadMessageCount(cursor)
-                                        + COUNT_TEXT_DECOLLATOR_2 + cursor.getCount());
-                            } else {
-                                mCountTextView.setText("" + cursor.getCount());
-                            }
-                        } else if (isSearchMode()) {
-                            setMessageTitle(cursor.getCount());
-                        } else {
-                            mCountTextView.setVisibility(View.INVISIBLE);
-                        }
+                    }
+
+                    if (mIsInSearchMode) {
+                        setMessageTitle(cursor.getCount());
+                    } else if (needShowCountNum(cursor)) {
+                        showMessageCount(cursor);
                     }
                 } else {
                     if (LogTag.VERBOSE || Log.isLoggable(LogTag.APP, Log.VERBOSE)) {
@@ -960,9 +956,7 @@ public class MailBoxMessageList extends ListActivity implements
     }
 
     private class ModeCallback implements ListView.MultiChoiceModeListener {
-        private View mMultiSelectActionBarView;
-        private TextView mSelectedConvCount;
-
+        @Override
         public boolean onCreateActionMode(ActionMode mode, Menu menu) {
             // comes into MultiChoiceMode
             mMultiChoiceMode = true;
@@ -970,32 +964,12 @@ public class MailBoxMessageList extends ListActivity implements
             MenuInflater inflater = getMenuInflater();
             inflater.inflate(R.menu.conversation_multi_select_menu, menu);
 
-            if (mMultiSelectActionBarView == null) {
-                mMultiSelectActionBarView = (ViewGroup) LayoutInflater
-                        .from(MailBoxMessageList.this).inflate(
-                                R.layout.conversation_list_multi_select_actionbar, null);
-
-                mSelectedConvCount = (TextView) mMultiSelectActionBarView
-                        .findViewById(R.id.selected_conv_count);
-            }
-
-            if (mSelectedConvCount != null) {
-                mSelectedConvCount.setText(NONE_SELECTED);
-            }
-
-            mode.setCustomView(mMultiSelectActionBarView);
-            ((TextView) mMultiSelectActionBarView.findViewById(R.id.title))
-                    .setText(R.string.select_messages);
             return true;
         }
 
         public boolean onPrepareActionMode(ActionMode mode, Menu menu) {
-            if (mMultiSelectActionBarView == null) {
-                ViewGroup v = (ViewGroup) LayoutInflater.from(MailBoxMessageList.this).inflate(
-                        R.layout.conversation_list_multi_select_actionbar, null);
-                mode.setCustomView(v);
-                mSelectedConvCount = (TextView) v.findViewById(R.id.selected_conv_count);
-            }
+            mode.setTitle(getString(R.string.selected_count,
+                    getListView().getCheckedItemCount()));
             return true;
         }
 
@@ -1006,6 +980,13 @@ public class MailBoxMessageList extends ListActivity implements
                 case R.id.delete:
                     confirmDeleteMessages();
                     break;
+                case R.id.selection_toggle:
+                    if (allItemsSelected()) {
+                        unCheckAll();
+                    } else {
+                        checkAll();
+                    }
+                    return true;
                 default:
                     break;
             }
@@ -1013,6 +994,7 @@ public class MailBoxMessageList extends ListActivity implements
             return true;
         }
 
+        @Override
         public void onDestroyActionMode(ActionMode mode) {
             // leave MultiChoiceMode
             mMultiChoiceMode = false;
@@ -1021,12 +1003,21 @@ public class MailBoxMessageList extends ListActivity implements
             mSpinners.setVisibility(View.VISIBLE);
         }
 
+        @Override
         public void onItemCheckedStateChanged(ActionMode mode, int position, long id,
                 boolean checked) {
             ListView listView = getListView();
             listView.invalidateViews();
             int checkedCount = listView.getCheckedItemCount();
-            mSelectedConvCount.setText(Integer.toString(checkedCount));
+
+            mode.setTitle(getString(R.string.selected_count, checkedCount));
+            mode.getMenu().findItem(R.id.selection_toggle).setTitle(getString(
+                    allItemsSelected() ? R.string.deselected_all : R.string.selected_all));
+        }
+
+        private boolean allItemsSelected() {
+            final ListView lv = getListView();
+            return lv.getCheckedItemCount() == lv.getCount();
         }
     }
 }
