@@ -219,7 +219,8 @@ public class MessageListAdapter extends CursorAdapter {
                     accentColor = res.getColor(R.color.incoming_message_bg_default);
                 }
 
-                mli.bind(msgItem, accentColor, mIsGroupConversation, position);
+                mli.bind(msgItem, accentColor, mIsGroupConversation, position,
+                        mListView.isItemChecked(position));
                 mli.setMsgListItemHandler(mMsgListItemHandler);
             }
         }
