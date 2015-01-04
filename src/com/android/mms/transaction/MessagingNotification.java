@@ -101,7 +101,6 @@ public class MessagingNotification {
     private static final boolean DEBUG = false;
 
     public static final int NOTIFICATION_ID = 123;
-    public static final int MESSAGE_FAILED_NOTIFICATION_ID = 789;
     public static final int DOWNLOAD_FAILED_NOTIFICATION_ID = 531;
     /**
      * This is the volume at which to play the in-conversation notification sound,
@@ -1059,7 +1058,6 @@ public class MessagingNotification {
 
                     // This is a QR, we should show the keyboard when the user taps to reply
                     qmIntent.putExtra(QuickMessagePopup.QR_SHOW_KEYBOARD_EXTRA, true);
-
                     // Create the Quick reply pending intent and add it to the notification
                     CharSequence qmText = context.getText(R.string.qm_quick_reply);
                     PendingIntent qmPendingIntent = PendingIntent.getActivity(context, 0, qmIntent,
