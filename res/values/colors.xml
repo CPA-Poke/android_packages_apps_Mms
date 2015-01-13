@@ -24,19 +24,19 @@
     <!-- text color -->
     <drawable name="text_color_red">#ffff4444</drawable>
     <drawable name="text_color_black">#ff000000</drawable>
-    <color name="message_count_color">#66333333</color>
+    <color name="message_count_color">@*android:color/accent_material_light</color>
 
     <!-- Chat "sent time" text background -->
-    <color name="timestamp_color">#bf000000</color>
+    <color name="timestamp_color">#bfffffff</color>
 
     <color name="outgoing_message_bg">#ffffff</color>
     <color name="incoming_message_bg_default">#26c6da</color>
     <color name="selected_list_item_bg">#ffeeeeee</color>
 
-    <color name="widget_sender_text_color_read">#555555</color>
-    <color name="widget_sender_text_color_unread">#333333</color>
+    <color name="widget_sender_text_color_read">#aaaaaa</color>
+    <color name="widget_sender_text_color_unread">#ffffff</color>
     <color name="widget_subject_text_color_read">#777777</color>
-    <color name="widget_subject_text_color_unread">#555555</color>
+    <color name="widget_subject_text_color_unread">#cccccc</color>
 
     <color name="translucent_white">#ccffffff</color>
 
@@ -55,7 +55,7 @@
     <color name="widget_loading">#000000</color>
 
     <!-- New Background colors from layouts to make theme chooser apk easier to theme -->
-    <color name="background">#ffffff</color>
+    <color name="background">@*android:color/material_blue_grey</color>
     <color name="darkgray_backgrounds">#888888</color>
     <color name="quickmessage_body_dark_bg">#ff1e1e1e</color>
     <color name="quickmessage_body_light_bg">#fff3f3f3</color>
