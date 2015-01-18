@@ -267,5 +267,13 @@
               android:layout="?android:attr/preferenceLayoutChild"
               android:dependency="pref_key_quickmessage"
               android:defaultValue="false" />
+
+      <ListPreference
+              android:key="pref_key_unicode_stripping_value"
+              android:title="@string/pref_title_unicode_stripping"
+              android:summary="%s"
+              android:entries="@array/pref_unicode_stripping_entries"
+              android:entryValues="@array/pref_unicode_stripping_values" />
     </PreferenceCategory>
+
 </PreferenceScreen>
