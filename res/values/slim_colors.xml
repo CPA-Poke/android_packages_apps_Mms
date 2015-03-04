@@ -47,4 +47,8 @@
 
     <color name="floating_action_button_icon_color">#ffffff</color>
 
+    <color name="compose_message_background_color">#ffffffff</color>
+    <color name="compose_message_text_color">#ff000000</color>
+    <color name="compose_message_divider_color">#ffeeeeee</color>
+
 </resources>
