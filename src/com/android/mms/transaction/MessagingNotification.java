@@ -54,6 +54,8 @@ import android.media.AudioManager;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Handler;
+import android.os.Parcel;
+import android.os.Parcelable;
 import android.preference.PreferenceManager;
 import android.provider.Telephony.Mms;
 import android.provider.Telephony.Sms;
@@ -76,8 +78,11 @@ import com.android.mms.R;
 import com.android.mms.data.Contact;
 import com.android.mms.data.Conversation;
 import com.android.mms.data.WorkingMessage;
+import com.android.mms.data.slim.SlimConversationSettings;
 import com.android.mms.model.SlideModel;
 import com.android.mms.model.SlideshowModel;
+import com.android.mms.quickmessage.QmMarkRead;
+import com.android.mms.quickmessage.QuickMessagePopup;
 import com.android.mms.ui.ComposeMessageActivity;
 import com.android.mms.ui.ConversationList;
 import com.android.mms.ui.ManageSimMessages;
@@ -105,7 +110,7 @@ public class MessagingNotification {
     private static final String TAG = LogTag.APP;
     private static final boolean DEBUG = false;
 
-    private static final int NOTIFICATION_ID = 123;
+    public static final int NOTIFICATION_ID = 123;
     public static final int FULL_NOTIFICATION_ID   = 125;
     private static final int NOTIFICATION_ID_SIM1 = 126;
     private static final int NOTIFICATION_ID_SIM2 = 127;
@@ -329,11 +334,11 @@ public class MessagingNotification {
                                 "sCurrentlyDisplayedThreadId so NOT showing notification," +
                                 " but playing soft sound. threadId: " + newMsgThreadId);
                     }
-                    playInConversationNotificationSound(context);
+                    playInConversationNotificationSound(context, newMsgThreadId);
                     return;
                 }
             }
-            updateNotification(context, newMsgThreadId != THREAD_NONE, threads.size(),
+            updateNotification(context, newMsgThreadId, threads.size(),
                     notificationSet);
         }
 
@@ -436,10 +441,10 @@ public class MessagingNotification {
      * Play the in-conversation notification sound (it's the regular notification sound, but
      * played at half-volume
      */
-    private static void playInConversationNotificationSound(Context context) {
-        SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(context);
-        String ringtoneStr = sp.getString(MessagingPreferenceActivity.NOTIFICATION_RINGTONE,
-                null);
+    private static void playInConversationNotificationSound(Context context, long newThreadId) {
+         SlimConversationSettings conversationSettings = SlimConversationSettings
+                 .getOrNew(context, newThreadId);
+         String ringtoneStr = conversationSettings.getNotificationTone();
         if (TextUtils.isEmpty(ringtoneStr)) {
             // Nothing to play
             return;
@@ -488,7 +493,7 @@ public class MessagingNotification {
         }
     }
 
-    private static final class NotificationInfo {
+    public static final class NotificationInfo implements Parcelable {
         public final Intent mClickIntent;
         public final String mMessage;
         public final CharSequence mTicker;
@@ -635,6 +640,50 @@ public class MessagingNotification {
             }
             return spannableStringBuilder;
         }
+
+        @Override
+        public int describeContents() {
+            return 0;
+        }
+
+        @Override
+        public void writeToParcel(Parcel arg0, int arg1) {
+            arg0.writeByte((byte) (mIsSms ? 1 : 0));
+            arg0.writeParcelable(mClickIntent, 0);
+            arg0.writeString(mMessage);
+            arg0.writeString(mSubject);
+            arg0.writeCharSequence(mTicker);
+            arg0.writeLong(mTimeMillis);
+            arg0.writeString(mTitle);
+            arg0.writeParcelable(mAttachmentBitmap, 0);
+            arg0.writeInt(mAttachmentType);
+            arg0.writeLong(mThreadId);
+        }
+
+        public NotificationInfo(Parcel in) {
+            mIsSms = in.readByte() == 1;
+            mClickIntent = in.readParcelable(Intent.class.getClassLoader());
+            mMessage = in.readString();
+            mSubject = in.readString();
+            mTicker = in.readCharSequence();
+            mTimeMillis = in.readLong();
+            mTitle = in.readString();
+            mAttachmentBitmap = in.readParcelable(Bitmap.class.getClassLoader());
+            mSender = null;
+            mAttachmentType = in.readInt();
+            mThreadId = in.readLong();
+        }
+
+        public static final Parcelable.Creator<NotificationInfo> CREATOR = new Parcelable.Creator<NotificationInfo>() {
+            public NotificationInfo createFromParcel(Parcel in) {
+                return new NotificationInfo(in);
+            }
+
+            public NotificationInfo[] newArray(int size) {
+                return new NotificationInfo[size];
+            }
+        };
+
     }
 
     // Return a formatted string with all the sender names separated by commas.
@@ -980,17 +1029,22 @@ public class MessagingNotification {
      * updateNotification is *the* main function for building the actual notification handed to
      * the NotificationManager
      * @param context
-     * @param isNew if we've got a new message, show the ticker
+     * @param newThreadId the new thread id
      * @param uniqueThreadCount
      * @param notificationSet the set of notifications to display
      */
     private static void updateNotification(
             Context context,
-            boolean isNew,
+            long newThreadId,
             int uniqueThreadCount,
             SortedSet<NotificationInfo> notificationSet) {
+        boolean isNew = newThreadId != THREAD_NONE;
+        SlimConversationSettings conversationSettings = SlimConversationSettings
+                .getOrNew(context, newThreadId);
+
         // If the user has turned off notifications in settings, don't do any notifying.
-        if (!MessagingPreferenceActivity.getNotificationEnabled(context)) {
+        if ((isNew && !conversationSettings.getNotificationEnabled()) ||
+                !MessagingPreferenceActivity.getNotificationEnabled(context)) {
             if (DEBUG) {
                 Log.d(TAG, "updateNotification: notifications turned off in prefs, bailing");
             }
@@ -1086,28 +1140,17 @@ public class MessagingNotification {
         if (isNew) {
             SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(context);
 
-            boolean vibrate = false;
-            if (sp.contains(MessagingPreferenceActivity.NOTIFICATION_VIBRATE)) {
-                // The most recent change to the vibrate preference is to store a boolean
-                // value in NOTIFICATION_VIBRATE. If prefs contain that preference, use that
-                // first.
-                vibrate = sp.getBoolean(MessagingPreferenceActivity.NOTIFICATION_VIBRATE,
-                        false);
-            } else if (sp.contains(MessagingPreferenceActivity.NOTIFICATION_VIBRATE_WHEN)) {
-                // This is to support the pre-JellyBean MR1.1 version of vibrate preferences
-                // when vibrate was a tri-state setting. As soon as the user opens the Messaging
-                // app's settings, it will migrate this setting from NOTIFICATION_VIBRATE_WHEN
-                // to the boolean value stored in NOTIFICATION_VIBRATE.
-                String vibrateWhen =
-                        sp.getString(MessagingPreferenceActivity.NOTIFICATION_VIBRATE_WHEN, null);
-                vibrate = "always".equals(vibrateWhen);
-            }
-            if (vibrate) {
-                defaults |= Notification.DEFAULT_VIBRATE;
+            if (conversationSettings.getVibrateEnabled()) {
+                String pattern = conversationSettings.getVibratePattern();
+
+                if (!TextUtils.isEmpty(pattern)) {
+                    noti.setVibrate(parseVibratePattern(pattern));
+                } else {
+                    defaults |= Notification.DEFAULT_VIBRATE;
+                }
             }
 
-            String ringtoneStr = sp.getString(MessagingPreferenceActivity.NOTIFICATION_RINGTONE,
-                    null);
+            String ringtoneStr = conversationSettings.getNotificationTone();
             if (isInCall()) {
                 noti.setSound(TextUtils.isEmpty(ringtoneStr) ? null : Uri.parse(ringtoneStr),
                         AUDIO_ATTRIBUTES_ALARM);
@@ -1125,7 +1168,56 @@ public class MessagingNotification {
         noti.setDeleteIntent(PendingIntent.getBroadcast(context, 0,
                 sNotificationOnDeleteIntent, 0));
 
+        // See if QuickMessage pop-up support is enabled in preferences
+        boolean qmPopupEnabled = MessagingPreferenceActivity.getQuickMessageEnabled(context);
+
+        // Set up the QuickMessage intent
+        Intent qmIntent = null;
+        if (mostRecentNotification.mIsSms) {
+            // QuickMessage support is only for SMS
+            qmIntent = new Intent();
+            qmIntent.setClass(context, QuickMessagePopup.class);
+            qmIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP |
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
+            qmIntent.putExtra(QuickMessagePopup.SMS_FROM_NAME_EXTRA, mostRecentNotification.mSender.getName());
+            qmIntent.putExtra(QuickMessagePopup.SMS_FROM_NUMBER_EXTRA, mostRecentNotification.mSender.getNumber());
+            qmIntent.putExtra(QuickMessagePopup.SMS_NOTIFICATION_OBJECT_EXTRA, mostRecentNotification);
+        }
+
+        // Start getting the notification ready
         final Notification notification;
+
+        if (messageCount == 1 || uniqueThreadCount == 1) {
+            // Add the Quick Reply action only if the pop-up won't be shown already
+            if (!qmPopupEnabled && qmIntent != null) {
+
+                // This is a QR, we should show the keyboard when the user taps to reply
+                qmIntent.putExtra(QuickMessagePopup.QR_SHOW_KEYBOARD_EXTRA, true);
+
+                // Create the Quick reply pending intent and add it to the notification
+                CharSequence qmText = context.getText(R.string.qm_quick_reply);
+                PendingIntent qmPendingIntent = PendingIntent.getActivity(context, 0, qmIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT);
+                noti.addAction(R.drawable.ic_reply, qmText, qmPendingIntent);
+            }
+
+            // Add the 'Mark as read' action
+            CharSequence markReadText = context.getText(R.string.qm_mark_read);
+            Intent mrIntent = new Intent();
+            mrIntent.setClass(context, QmMarkRead.class);
+            mrIntent.putExtra(QmMarkRead.SMS_THREAD_ID, mostRecentNotification.mThreadId);
+            PendingIntent mrPendingIntent = PendingIntent.getBroadcast(context, 0, mrIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT);
+            noti.addAction(R.drawable.ic_mark_read, markReadText, mrPendingIntent);
+
+            // Add the Call action
+            CharSequence callText = context.getText(R.string.menu_call);
+            Intent callIntent = new Intent(Intent.ACTION_CALL);
+            callIntent.setData(mostRecentNotification.mSender.getPhoneUri());
+            PendingIntent callPendingIntent = PendingIntent.getActivity(context, 0, callIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT);
+            noti.addAction(R.drawable.ic_menu_call, callText, callPendingIntent);
+        }
 
         if (messageCount == 1) {
             // We've got a single message
@@ -1229,6 +1321,31 @@ public class MessagingNotification {
 
         notifyUserIfFullScreen(context, title);
         nm.notify(NOTIFICATION_ID, notification);
+
+        // Trigger the QuickMessage pop-up activity if enabled
+        // But don't show the QuickMessage if the user is in a call or the phone is ringing
+        if (qmPopupEnabled && qmIntent != null) {
+            TelephonyManager tm = (TelephonyManager) context.getSystemService(Context.TELEPHONY_SERVICE);
+            if (tm.getCallState() == TelephonyManager.CALL_STATE_IDLE && !ConversationList.mIsRunning && !ComposeMessageActivity.mIsRunning) {
+                context.startActivity(qmIntent);
+            }
+        }
+    }
+
+    // Parse the user provided custom vibrate pattern into a long[]
+    private static long[] parseVibratePattern(String pattern) {
+        String[] splitPattern = pattern.split(",");
+        long[] result = new long[splitPattern.length];
+
+        for (int i = 0; i < splitPattern.length; i++) {
+            try {
+                result[i] = Long.parseLong(splitPattern[i]);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+
+        return result;
     }
 
     protected static CharSequence buildTickerMessage(
