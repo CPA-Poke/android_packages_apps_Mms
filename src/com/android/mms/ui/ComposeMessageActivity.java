@@ -225,6 +225,7 @@ public class ComposeMessageActivity extends Activity
     private static final int MENU_COPY_TO_SIM           = 34;
     private static final int MENU_RESEND                = 35;
     private static final int MENU_ADD_TO_BLACKLIST      = 36;
+    private static final int MENU_CONVERSATION_OPTIONS  = 37;
 
     private static final int DIALOG_TEMPLATE_SELECT     = 1;
     private static final int DIALOG_TEMPLATE_NOT_AVAILABLE = 2;
@@ -2924,6 +2925,10 @@ public class ComposeMessageActivity extends Activity
 
         buildAddAddressToContactMenuItem(menu);
 
+        if (mConversation.getThreadId() > 0) {
+            menu.add(0, MENU_CONVERSATION_OPTIONS, 0, R.string.menu_conversation_options);
+        }
+
         // Add to Blacklist item (if enabled)
         if (BlacklistUtils.isBlacklistEnabled(this)) {
             menu.add(0, MENU_ADD_TO_BLACKLIST, 0, R.string.add_to_blacklist)
@@ -3024,6 +3029,12 @@ public class ComposeMessageActivity extends Activity
                 mAddContactIntent = item.getIntent();
                 startActivityForResult(mAddContactIntent, REQUEST_CODE_ADD_CONTACT);
                 break;
+            case MENU_CONVERSATION_OPTIONS: {
+                Intent intent = new Intent(this, ConversationOptionsActivity.class);
+                intent.putExtra(THREAD_ID, mConversation.getThreadId());
+                startActivityIfNeeded(intent, -1);
+                break;
+            }
             case MENU_PREFERENCES: {
                 Intent intent = new Intent(this, MessagingPreferenceActivity.class);
                 startActivityIfNeeded(intent, -1);

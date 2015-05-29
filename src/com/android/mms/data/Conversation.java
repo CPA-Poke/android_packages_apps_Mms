@@ -1,3 +1,18 @@
+/*
+* Copyright (C) 2015 SlimRoms Project
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+* http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
 package com.android.mms.data;
 
 import java.util.ArrayList;
@@ -33,6 +48,7 @@ import android.widget.Toast;
 import com.android.mms.LogTag;
 import com.android.mms.MmsApp;
 import com.android.mms.R;
+import com.android.mms.data.slim.SlimConversationSettings;
 import com.android.mms.transaction.MessagingNotification;
 import com.android.mms.transaction.MmsMessageSender;
 import com.android.mms.ui.ComposeMessageActivity;
@@ -48,6 +64,7 @@ public class Conversation {
     private static final String TAG = LogTag.TAG;
     private static final boolean DEBUG = false;
     private static final boolean DELETEDEBUG = false;
+    private static final boolean UNMARKDEBUG = false;
 
     public static final Uri sAllThreadsUri =
         Threads.CONTENT_URI.buildUpon().appendQueryParameter("simple", "true").build();
@@ -61,6 +78,9 @@ public class Conversation {
     public static final String[] UNREAD_PROJECTION = {
         Threads._ID,
         Threads.READ
+    };
+
+    public static final String[] CONVERSATION_SETTING = {
     };
 
     private static final String UNREAD_SELECTION = "(read=0 OR seen=0)";
@@ -411,11 +431,11 @@ public class Conversation {
                 }
 
                 if (updateNotifications) {
-                	// Always update notifications regardless of the read state, which is usually
-	                // canceling the notification of the thread that was just marked read.
-	                MessagingNotification.blockingUpdateAllNotifications(mContext,
-	                        MessagingNotification.THREAD_NONE);
-				}
+                    // Always update notifications regardless of the read state, which is usually
+                    // canceling the notification of the thread that was just marked read.
+                    MessagingNotification.blockingUpdateAllNotifications(mContext,
+                            MessagingNotification.THREAD_NONE);
+                }
                 return null;
             }
         }.execute();
@@ -763,6 +783,65 @@ public class Conversation {
     }
 
     /**
+     * Start mark as read of the conversation with the specified thread ID.
+     *
+     * @param handler An AsyncQueryHandler that will receive onMarkAsReadComplete
+     *                upon completion of the conversation being marked as read
+     * @param token   The token that will be passed to onMarkAsReadComplete
+     * @param threadIds Collection of thread IDs of the conversations to be marked as read
+     */
+    public static void startMarkAsRead(Context context, ConversationQueryHandler handler,
+                                         int token, Collection<Long> threadIds) {
+        synchronized(sDeletingThreadsLock) {
+            if (UNMARKDEBUG) {
+                Log.v(TAG,"Conversation startMarkAsRead marking as read:" +
+                        threadIds.size());
+            }
+            for (long threadId : threadIds) {
+                Conversation c = Conversation.get(context,threadId,true);
+                if (c!=null) {
+                    c.markAsRead(true);
+                }
+            }
+        }
+    }
+
+    /**
+     * Start mark as read of the conversation with the specified thread ID.
+     *
+     * @param handler An AsyncQueryHandler that will receive onMarkAsReadComplete
+     *                upon completion of the conversation being marked as read
+     * @param token   The token that will be passed to onMarkAsReadComplete
+     */
+    public static void startMarkAsReadAll(Context context,  ConversationQueryHandler handler,
+                                            int token) {
+        synchronized(sDeletingThreadsLock) {
+            if (UNMARKDEBUG) {
+                Log.v(TAG,"Conversation startMarkAsRead marking all as read");
+            }
+
+            Cursor c = context.getContentResolver().query(sAllThreadsUri,
+                    ALL_THREADS_PROJECTION, null, null, null);
+            try {
+                if (c != null) {
+                    ContentResolver resolver = context.getContentResolver();
+                    while (c.moveToNext()) {
+                        long threadId = c.getLong(ID);
+                        Conversation con = Conversation.get(context,threadId,true);
+                        if (con!=null) {
+                            con.markAsRead(true);
+                        }
+                    }
+                }
+            } finally {
+                if (c != null) {
+                    c.close();
+                }
+            }
+        }
+    }
+
+    /**
      * Start a delete of the conversation with the specified thread ID.
      *
      * @param handler An AsyncQueryHandler that will receive onDeleteComplete
@@ -792,6 +871,8 @@ public class Conversation {
                 handler.startDelete(token, new Long(threadId), uri, selection, null);
 
                 DraftCache.getInstance().setDraftState(threadId, false);
+
+                SlimConversationSettings.delete(MmsApp.getApplication(), threadId);
             }
         }
     }
@@ -822,6 +903,8 @@ public class Conversation {
 
             handler.setDeleteToken(token);
             handler.startDelete(token, new Long(-1), Threads.CONTENT_URI, selection, null);
+
+            SlimConversationSettings.deleteAll(app);
         }
     }
 

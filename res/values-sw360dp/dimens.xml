@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Copyright (C) 2010 The Android Open Source Project
+<!-- Copyright (C) 2013-2015 The CyanogenMod Project
 
      Licensed under the Apache License, Version 2.0 (the "License");
      you may not use this file except in compliance with the License.
@@ -13,13 +13,6 @@
      See the License for the specific language governing permissions and
      limitations under the License.
 -->
-
-<menu xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:id="@+id/delete"
-          android:title="@string/delete"
-          android:icon="@drawable/ic_menu_delete"
-          android:showAsAction="always|withText" />
-    <item android:id="@+id/markAsRead"
-          android:title="@string/menu_as_read"
-          android:showAsAction="never|withText" />
-</menu>
+<resources>
+    <dimen name="qm_message_width">340dp</dimen>
+</resources>
